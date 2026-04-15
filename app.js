@@ -30,6 +30,7 @@ app.post(
   async (req, res) => {
     const sig = req.headers["stripe-signature"];
     let event;
+
     try {
       event = Stripe.webhooks.constructEvent(
         req.body,
@@ -40,33 +41,33 @@ app.post(
       return res.status(400).send(`Webhook Error: ${error.message || error}`);
     }
 
-    // Handling the Event
-
     if (event.type === "payment_intent.succeeded") {
-      const paymentIntent_client_secret = event.data.object.client_secret;
+      const paymentIntentId = event.data.object.id;
+
       try {
-        // FINDING AND UPDATED PAYMENT
         const updatedPaymentStatus = "Paid";
+
         const paymentTableUpdateResult = await database.query(
           `UPDATE payments SET payment_status = $1 WHERE payment_intent_id = $2 RETURNING *`,
-          [updatedPaymentStatus, paymentIntent_client_secret]
-        );
-        await database.query(
-          `UPDATE orders SET paid_at = NOW() WHERE id = $1 RETURNING *`,
-          [paymentTableUpdateResult.rows[0].order_id]
+          [updatedPaymentStatus, paymentIntentId]
         );
 
-        // Reduce Stock For Each Product
+        if (!paymentTableUpdateResult.rows.length) {
+          return res.status(400).send("Payment not found in DB");
+        }
+
         const orderId = paymentTableUpdateResult.rows[0].order_id;
 
-        const { rows: orderedItems } = await database.query(
-          `
-            SELECT product_id, quantity FROM order_items WHERE order_id = $1
-          `,
+        await database.query(
+          `UPDATE orders SET paid_at = NOW() WHERE id = $1`,
           [orderId]
         );
 
-        // For each ordered item, reduce the product stock
+        const { rows: orderedItems } = await database.query(
+          `SELECT product_id, quantity FROM order_items WHERE order_id = $1`,
+          [orderId]
+        );
+
         for (const item of orderedItems) {
           await database.query(
             `UPDATE products SET stock = stock - $1 WHERE id = $2`,
@@ -74,11 +75,12 @@ app.post(
           );
         }
       } catch (error) {
-        return res
-          .status(500)
-          .send(`Error updating paid_at timestamp in orders table.`);
+        console.error(error);
+        return res.status(500).send("Error updating order after payment");
       }
     }
+
+    // ✅ VERY IMPORTANT (Stripe needs this)
     res.status(200).send({ received: true });
   }
 );
