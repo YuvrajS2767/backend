@@ -17,7 +17,7 @@ const router = express.Router();
 router.post("/new", isAuthenticated, placeNewOrder);
 
 // ✅ FIXED ORDER (VERY IMPORTANT)
-router.get("/orders/me", isAuthenticated, fetchMyOrders);
+router.get("/me", isAuthenticated, fetchMyOrders);
 
 router.get("/:orderId", isAuthenticated, fetchSingleOrder);
 
