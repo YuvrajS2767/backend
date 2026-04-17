@@ -38,6 +38,6 @@ router.delete(
   authorizedRoles("Admin"),
   deleteProduct
 );
-router.post("/ai-search", isAuthenticated, fetchAIFilteredProducts);
+router.post("/ai", isAuthenticated, fetchAIFilteredProducts);
 
 export default router;
