@@ -480,13 +480,19 @@ export const fetchAIFilteredProducts = catchAsyncErrors(
 
     const keywords = filterKeywords(userPrompt);
     // STEP 1: Basic SQL Filtering
+    if (!keywords.length) {
+  return res.status(200).json({
+    success: true,
+    products: [],
+  });
+}
     const result = await database.query(
       `
         SELECT * FROM products
         WHERE name ILIKE ANY($1)
         OR description ILIKE ANY($1)
         OR category ILIKE ANY($1)
-        LIMIT 200;     
+        LIMIT 50;     
         `,
       [keywords]
     );
@@ -502,17 +508,17 @@ export const fetchAIFilteredProducts = catchAsyncErrors(
     }
 
     // STEP 2: AI FILTERING
-    const { success, products } = await getAIRecommendation(
-      req,
-      res,
-      userPrompt,
-      filteredProducts
-    );
+    // STEP 2: AI FILTERING
+const aiResult = await getAIRecommendation(userPrompt, filteredProducts);
 
-    res.status(200).json({
-      success: success,
-      message: "AI filtered products.",
-      products,
-    });
+if (!aiResult.success) {
+  return next(new ErrorHandler(aiResult.message, 500));
+}
+
+res.status(200).json({
+  success: true,
+  message: "AI filtered products.",
+  products: aiResult.products,
+});
   }
 );
