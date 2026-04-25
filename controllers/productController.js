@@ -512,7 +512,10 @@ export const fetchAIFilteredProducts = catchAsyncErrors(
 const aiResult = await getAIRecommendation(userPrompt, filteredProducts);
 
 if (!aiResult.success) {
-  return next(new ErrorHandler(aiResult.message, 500));
+  return res.status(200).json({
+    success: true,
+    products: filteredProducts, // fallback
+  });
 }
 
 res.status(200).json({
