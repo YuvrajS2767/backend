@@ -392,89 +392,20 @@ export const fetchAIFilteredProducts = catchAsyncErrors(
 
     const filterKeywords = (query) => {
       const stopWords = new Set([
-        "the",
-        "they",
-        "them",
-        "then",
-        "I",
-        "we",
-        "you",
-        "he",
-        "she",
-        "it",
-        "is",
-        "a",
-        "an",
-        "of",
-        "and",
-        "or",
-        "to",
-        "for",
-        "from",
-        "on",
-        "who",
-        "whom",
-        "why",
-        "when",
-        "which",
-        "with",
-        "this",
-        "that",
-        "in",
-        "at",
-        "by",
-        "be",
-        "not",
-        "was",
-        "were",
-        "has",
-        "have",
-        "had",
-        "do",
-        "does",
-        "did",
-        "so",
-        "some",
-        "any",
-        "how",
-        "can",
-        "could",
-        "should",
-        "would",
-        "there",
-        "here",
-        "just",
-        "than",
-        "because",
-        "but",
-        "its",
-        "it's",
-        "if",
-        ".",
-        ",",
-        "!",
-        "?",
-        ">",
-        "<",
-        ";",
-        "`",
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",
-        "6",
-        "7",
-        "8",
-        "9",
-        "10",
+        "the","they","them","then","i","we","you","he","she","it",
+        "is","a","an","of","and","or","to","for","from","on",
+        "who","whom","why","when","which","with","this","that",
+        "in","at","by","be","not","was","were","has","have","had",
+        "do","does","did","so","some","any","how","can","could",
+        "should","would","there","here","just","than","because",
+        "but","its","if"
       ]);
 
       return query
         .toLowerCase()
         .replace(/[^\w\s]/g, "")
         .split(/\s+/)
-        .filter((word) => !stopWords.has(word))
+        .filter((word) => word && !stopWords.has(word))
         .map((word) => `%${word}%`);
     };
 
@@ -486,29 +417,39 @@ export const fetchAIFilteredProducts = catchAsyncErrors(
     products: [],
   });
 }
-    const result = await database.query(
-      `
-        SELECT * FROM products
-        WHERE name ILIKE ANY($1)
-        OR description ILIKE ANY($1)
-        OR category ILIKE ANY($1)
-        LIMIT 50;     
-        `,
-      [keywords]
-    );
+    let filteredProducts = [];
 
-    const filteredProducts = result.rows;
+// 🔥 STEP 1: STRICT AND FILTER
+const conditions = keywords.map(
+  (_, index) => `
+    (name ILIKE $${index + 1}
+    OR description ILIKE $${index + 1}
+    OR category ILIKE $${index + 1})
+  `
+);
 
-    if (filteredProducts.length === 0) {
-      return res.status(200).json({
-        success: true,
-        message: "No products found matching your prompt.",
-        products: [],
-      });
-    }
+const strictQuery = `
+  SELECT * FROM products
+  WHERE ${conditions.join(" AND ")}
+  LIMIT 50;
+`;
 
-    // STEP 2: AI FILTERING
-    // STEP 2: AI FILTERING
+const strictResult = await database.query(strictQuery, keywords);
+filteredProducts = strictResult.rows;
+
+// 🔥 STEP 2: FALLBACK TO OR (if no strict match)
+if (filteredProducts.length === 0) {
+  const fallbackQuery = `
+    SELECT * FROM products
+    WHERE name ILIKE ANY($1)
+    OR description ILIKE ANY($1)
+    OR category ILIKE ANY($1)
+    LIMIT 50;
+  `;
+
+  const fallbackResult = await database.query(fallbackQuery, [keywords]);
+  filteredProducts = fallbackResult.rows;
+}
 const aiResult = await getAIRecommendation(userPrompt, filteredProducts);
 
 if (!aiResult.success) {
@@ -518,10 +459,15 @@ if (!aiResult.success) {
   });
 }
 
+const finalProducts =
+  aiResult.products.length > 0
+    ? aiResult.products
+    : filteredProducts;
+
 res.status(200).json({
   success: true,
   message: "AI filtered products.",
-  products: aiResult.products,
+  products: finalProducts.slice(0, 10),
 });
   }
 );
